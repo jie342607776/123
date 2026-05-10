@@ -1,0 +1,909 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weapon Toss</title>
+    <script>
+      // 拦截 console.error 来捕获初始化链中的错误
+      window.__consoleErrors = [];
+      var _origConsoleError = console.error;
+      console.error = function() {
+        var args = Array.from(arguments).map(a => {
+          if(a instanceof Error) return a.message + '\n' + (a.stack||'');
+          if(typeof a === 'object') return JSON.stringify(a);
+          return String(a);
+        }).join(' ');
+        window.__consoleErrors.push(args);
+        _origConsoleError.apply(console, arguments);
+      };
+      // 全局错误捕获 - 获取完整堆栈
+      window.__errors=[];
+      window.addEventListener('error',function(e){
+        window.__errors.push({msg:e.message,file:e.filename,line:e.lineno,col:e.colno,stack:e.error?e.error.stack:'no stack'});
+        console.error('[CAPTURED]',e.message,'\n',e.error?e.error.stack:'');
+      });
+      window.addEventListener('unhandledrejection',function(e){
+        window.__errors.push({msg:'rejection: '+e.reason,stack:e.reason&&e.reason.stack||'no stack'});
+        console.error('[REJECTION]',e.reason,e.reason&&e.reason.stack);
+      });
+      // Mock CrazyGames SDK to prevent errors
+      window.CrazyGames=window.CrazyGames||{};
+      window.CrazyGames.SDK=window.CrazyGames.SDK||{};
+      var sdkMethods=['init','gameplayStart','gameplayStop','happyTime','levelStart','levelCompleted','gameLevelStart','requestAd','adStarted','adError','adFinished','rewardedAdCompleted','showInterstitial','showRewardAd','bannerAdRequest','bannerAdReady','bannerAdError','showBanner','hideBanner','refreshBanner','disableAdBlockDetection','enableAdBlockDetection'];
+      sdkMethods.forEach(function(m){if(!window.CrazyGames.SDK[m])window.CrazyGames.SDK[m]=function(){}});
+      window.CrazyGames.init=function(cb){if(cb)setTimeout(cb,100)};
+      // Properly mock the ad system so callbacks fire
+      window.CrazyGames.SDK.ad = window.CrazyGames.SDK.ad || {};
+      window.CrazyGames.SDK.ad.requestAd = function(type, callbacks) {
+        if (callbacks) {
+          if (callbacks.adStarted) setTimeout(callbacks.adStarted, 50);
+          if (callbacks.adFinished) setTimeout(callbacks.adFinished, 100);
+        }
+      };
+      window.CrazyGames.SDK.requestAd = function(type, callbacks) {
+        if (callbacks) {
+          if (callbacks.adStarted) setTimeout(callbacks.adStarted, 50);
+          if (callbacks.adFinished) setTimeout(callbacks.adFinished, 100);
+        }
+      };
+      // Mark first session as done to show main menu
+      try{localStorage.setItem('weapon-toss-first-session-done','1')}catch(e){}
+      // Intercept dynamic imports for debug stubs via import map
+      // This ensures the browser resolves debug imports to our mock modules
+      var mockDebugBo = URL.createObjectURL(new Blob(
+        ['export function registerConfigManager(t,E){}'],
+        {type:'application/javascript'}
+      ));
+      var mockDebugJME = URL.createObjectURL(new Blob(
+        ['export function registerSaveDebug(t,h,opts){}'],
+        {type:'application/javascript'}
+      ));
+      var importMapScript = document.createElement('script');
+      importMapScript.type = 'importmap';
+      importMapScript.textContent = JSON.stringify({
+        imports: {
+          './assets/debug-Bo-W6-rS.js': mockDebugBo,
+          './assets/debug-JMEeZp5E.js': mockDebugJME
+        }
+      });
+      document.currentScript.after(importMapScript);
+    </script>
+    <script type="module" crossorigin="" src="./assets/index-COYBzf31.js"></script>
+    <script type="module" crossorigin="" src="./assets/main-ClTvMUUy.js"></script>
+    <link rel="stylesheet" crossorigin="" href="./assets/index-D7lUqzV2.css">
+  <link rel="canonical" href="https://www.crazygames.com/game/weapon-toss">
+  </head>
+  <body>
+    <div id="loading-screen">
+      <div class="loading-spinner"></div>
+      <span class="loading-text">Loading</span>
+    </div>
+    <div id="screen-transition-overlay" class="screen-transition-overlay" aria-hidden="true"></div>
+    <div id="modal-fullscreen-backdrop" class="modal-fullscreen-backdrop" aria-hidden="true"></div>
+    <div id="game-wrapper">
+      <div id="game-fullscreen-bg" class="game-fullscreen-bg" aria-hidden="true"></div>
+      <div id="game-viewport">
+        <div id="viewport-content-wrap">
+        <div id="shared-top-bar">
+          <div id="shared-top-bar-row">
+            <!-- Row 1: level (left) + coins & gems (right) -->
+            <div id="player-level-ui">
+              <div id="player-level-badge">
+                <img id="player-level-badge-img" src="" alt="">
+                <span id="player-level-num">1</span>
+              </div>
+              <div id="player-level-bar-wrap">
+                <div id="player-level-bar-fill"></div>
+              </div>
+            </div>
+            <div id="shared-currency-row">
+              <div id="shared-currency">
+                <div id="currency-ui" data-espada-currency-indicator="true">
+                  <div id="currency-coin">
+                    <img src="" alt="">
+                  </div>
+                  <span id="currency-amount" data-espada-currency-amount="true">0</span>
+                </div>
+                <div id="gems-ui" data-espada-currency-id="gems">
+                  <div id="gems-icon-wrap">
+                    <img id="gems-icon" src="" alt="">
+                  </div>
+                  <span id="gems-amount" data-espada-currency-amount="true">0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="achievements-btn" class="ach-btn--visible" aria-label="Achievements">
+            <img class="ach-icon" src="" alt="">
+            <img class="ach-alert-icon" src="" alt="" hidden="">
+          </div>
+          <div id="daily-login-btn" class="ach-btn--visible" aria-label="Daily Login Bonus">
+            <img class="daily-login-icon" src="" alt="">
+            <img class="daily-login-alert-icon" src="" alt="" hidden="">
+          </div>
+          <div id="settings-btn-wrap">
+            <button type="button" id="settings-btn" aria-label="Settings" disabled="">
+              <img src="" alt="">
+            </button>
+          </div>
+        </div>
+        <div id="main-menu">
+          <div id="menu-top-ui"></div>
+        <div id="menu-content">
+          <div id="menu-panel-shop" class="menu-panel">
+            <div class="shop-key-ad-blocker level-up-ad-blocker" aria-hidden="true"></div>
+            <div class="shop-scroll">
+              <div class="shop-container">
+                <div class="shop-daily-fragments shop-daily-fragments--hidden" aria-hidden="true">
+                  <h2 class="shop-banner">Daily Fragments</h2>
+                  <p class="shop-refresh-countdown" id="shop-refresh-countdown" aria-live="polite">Refreshes in 00:00:00</p>
+                  <div id="shop-cards" class="shop-cards" aria-label="Daily fragment offers"></div>
+                </div>
+                <h2 class="shop-banner shop-banner--deals">Daily Deals</h2>
+                <p class="shop-refresh-countdown" id="shop-deals-refresh-countdown" aria-live="polite">Refreshes in 00:00:00</p>
+                <div id="shop-deals-cards" class="shop-cards shop-cards--deals" aria-label="Daily deals"></div>
+                <h2 class="shop-banner shop-banner--chests">Chests</h2>
+                <div id="shop-chest-cards" class="shop-cards shop-cards--chests" aria-label="Gear chests"></div>
+                <h2 class="shop-banner shop-banner--keys">Keys</h2>
+                <p class="shop-refresh-countdown" id="shop-keys-refresh-countdown" aria-live="polite">Refreshes in 00:00:00</p>
+                <div id="shop-key-cards" class="shop-cards shop-cards--keys" aria-label="Daily key offers"></div>
+                <h2 class="shop-banner shop-banner--gear">Gear</h2>
+                <p class="shop-refresh-countdown" id="shop-gear-refresh-countdown" aria-live="polite">Refreshes in 00:00:00</p>
+                <div id="shop-gear-cards" class="shop-cards shop-cards--gear" aria-label="Daily gear offers"></div>
+                <div class="shop-scroll-spacer" aria-hidden="true"></div>
+              </div>
+            </div>
+          </div>
+          <div id="menu-panel-gear" class="menu-panel">
+            <div class="gear-panel-inner">
+              <div class="gear-top-area" id="gear-top-area" data-active="equip">
+                <div class="gear-top-area-content">
+                  <div id="gear-hero-group" class="gear-hero-group gear-top-section">
+                    <div class="gear-slots-layout">
+                      <div class="gear-slots-left">
+                        <div class="gear-slot" data-slot="helmet" aria-label="Helmet slot"></div>
+                        <div class="gear-slot" data-slot="armor" aria-label="Chest slot"></div>
+                      </div>
+                      <div class="gear-hero-and-stats">
+                        <div class="gear-character-wrap">
+                          <div class="gear-hero-glow" aria-hidden="true"></div>
+                          <img id="gear-character-sprite" class="gear-character-sprite" src="" alt="">
+                        </div>
+                        <div class="gear-stats-bar">
+                          <div id="combat-power-ui" class="gear-combat-power gear-stat" title="Combat Power">
+                            <div id="combat-power-icon-wrap">
+                              <img id="combat-power-icon" src="" alt="">
+                            </div>
+                            <span id="combat-power-value">0</span>
+                          </div>
+                          <span class="gear-stat" id="gear-stat-dmg"><img class="gear-stat-icon" id="gear-stat-dmg-icon" src="" alt=""><span id="gear-stat-dmg-value">10</span></span>
+                          <span class="gear-stat" id="gear-stat-hp"><img class="gear-stat-icon" id="gear-stat-hp-icon" src="" alt=""><span id="gear-stat-hp-value">100</span></span>
+                        </div>
+                      </div>
+                      <div class="gear-slots-right">
+                        <div class="gear-slot" data-slot="amulet" aria-label="Amulet slot"></div>
+                        <div class="gear-slot" data-slot="ring" aria-label="Ring slot"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="gear-blacksmith-placeholder" id="gear-blacksmith-placeholder" aria-hidden="true">
+                    <div class="gear-blacksmith-layout">
+                      <div class="gear-blacksmith-character-wrap">
+                        <img id="gear-blacksmith-sprite" class="gear-blacksmith-sprite" src="" alt="Blacksmith">
+                      </div>
+                      <div class="gear-blacksmith-stats-bar">
+                        <div class="gear-blacksmith-slots-row">
+                          <div class="gear-blacksmith-slot" data-blacksmith-slot="0" aria-label="Merge slot 1"></div>
+                          <img class="gear-blacksmith-plus" id="gear-blacksmith-plus-1" src="" alt="" aria-hidden="true">
+                          <div class="gear-blacksmith-slot" data-blacksmith-slot="1" aria-label="Merge slot 2"></div>
+                          <img class="gear-blacksmith-plus" id="gear-blacksmith-plus-2" src="" alt="" aria-hidden="true">
+                          <div class="gear-blacksmith-slot" data-blacksmith-slot="2" aria-label="Merge slot 3"></div>
+                          <img class="gear-blacksmith-arrow" id="gear-blacksmith-arrow" src="" alt="" aria-hidden="true">
+                          <div class="gear-blacksmith-slot gear-blacksmith-slot--result" data-blacksmith-slot="result" aria-label="Result slot"></div>
+                        </div>
+                        <button type="button" id="gear-blacksmith-merge-btn" class="gear-blacksmith-merge-btn shop-btn shop-btn--green" aria-label="Merge 3 items" disabled="">MERGE</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="gear-tabs-row ach-tabs-row">
+                <button type="button" id="gear-tab-equip" class="gear-tab ach-tab ach-tab--active" data-tab="equip" aria-label="Gear" aria-selected="true">
+                  <img id="gear-tab-equip-icon" class="gear-tab-icon" src="" alt="">
+                  <span class="gear-tab-text">GEAR</span>
+                </button>
+                <button type="button" id="gear-tab-blacksmith" class="gear-tab ach-tab" data-tab="blacksmith" aria-label="Blacksmith" aria-selected="false">
+                  <img id="gear-tab-blacksmith-icon" class="gear-tab-icon" src="" alt="">
+                  <span class="gear-tab-text">BLACKSMITH<img id="gear-tab-blacksmith-alert" class="gear-tab-blacksmith-alert" src="" alt="" aria-hidden="true"></span>
+                </button>
+              </div>
+              <div class="gear-inventory-scroll">
+                <div id="gear-inventory-grid" class="gear-inventory-grid" aria-label="Gear inventory"></div>
+              </div>
+              <div class="gear-inventory-bottom-gradient" aria-hidden="true"></div>
+            </div>
+          </div>
+          <div id="menu-panel-battle" class="menu-panel menu-panel--active">
+            <div class="menu-chapter-wrap" aria-label="Current chapter">
+              <div id="menu-chapter-title" class="menu-chapter-title">Chapter 1</div>
+              <div class="menu-chapter-boss-wrap" id="menu-chapter-boss-wrap">
+                <img class="menu-chapter-boss-img" id="menu-chapter-boss-img" src="" alt="">
+              </div>
+            </div>
+            <button type="button" class="battle-btn shop-btn shop-btn--yellow" id="battle-btn">BATTLE</button>
+          </div>
+          <div id="menu-panel-upgrades" class="menu-panel">
+            <div class="talent-panel-inner">
+              <div class="upgrades-scroll">
+                <div id="meta-upgrades-root" class="meta-upgrades-root" aria-label="Meta upgrades"></div>
+              </div>
+              <div class="upgrades-bottom-gradient" aria-hidden="true"></div>
+            </div>
+          </div>
+          <div id="menu-panel-events" class="menu-panel menu-panel-events">
+            <div class="events-scroll">
+              <div class="events-container">
+                <div id="events-cards" aria-label="Events"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <nav id="menu-bottom-nav" aria-label="Main menu">
+          <button type="button" class="menu-nav-btn" id="nav-btn-shop" data-tab="shop" title="SHOP">
+            <span class="menu-nav-icon" aria-hidden="true"><img src="" alt=""><img id="nav-shop-alert" class="nav-shop-alert" src="" alt="" hidden=""></span>
+            <span>SHOP</span>
+          </button>
+          <button type="button" class="menu-nav-btn" id="nav-btn-gear" data-tab="gear" title="GEAR">
+            <span class="menu-nav-icon" aria-hidden="true"><img src="" alt=""></span>
+            <span>GEAR</span>
+          </button>
+          <button type="button" class="menu-nav-btn menu-nav-btn--selected" id="nav-btn-battle" data-tab="battle" aria-current="page" title="Battle">
+            <span class="menu-nav-icon" aria-hidden="true"><img src="" alt=""></span>
+            <span>Battle</span>
+          </button>
+          <button type="button" class="menu-nav-btn" id="nav-btn-upgrades" data-tab="upgrades" title="Upgrades">
+            <span class="menu-nav-icon" aria-hidden="true"><img src="" alt=""><img id="nav-upgrade-alert" class="nav-upgrade-alert" src="" alt="" hidden=""></span>
+            <span>UPGRADES</span>
+          </button>
+          <button type="button" class="menu-nav-btn" id="nav-btn-events" data-tab="events" aria-disabled="false" title="EVENTS">
+            <span class="menu-nav-icon" aria-hidden="true"><img src="" alt=""><img id="nav-events-alert" class="nav-events-alert" src="" alt="" hidden=""></span>
+            <span>EVENTS</span>
+          </button>
+        </nav>
+        </div>
+        <div id="settings-overlay" aria-hidden="true">
+          <div id="settings-backdrop"></div>
+          <div id="settings-content">
+            <button type="button" id="settings-close" class="settings-modal-close" aria-label="Close">×</button>
+            <h2 id="settings-title">Settings</h2>
+            <div id="settings-buttons">
+              <button type="button" class="settings-btn-action btn-9slice btn-9slice--blue" id="settings-toggle-fullscreen">Toggle Fullscreen</button>
+            </div>
+          </div>
+        </div>
+        <div id="level-road-overlay" aria-hidden="true">
+          <div class="level-road-backdrop"></div>
+          <button type="button" class="level-road-close" id="level-road-close" aria-label="Close"><img class="modal-close-icon" alt=""></button>
+          <div class="level-road-scroll" id="level-road-scroll">
+            <div class="level-road-track" id="level-road-track"></div>
+          </div>
+          <div class="level-road-footer">
+            <button type="button" class="level-road-continue btn-9slice btn-9slice--green" id="level-road-continue">Continue</button>
+          </div>
+        </div>
+        <div id="game-view" class="game-hidden">
+        <div id="top-ui">
+          <!-- Gameplay level (run-only, upgrades): leveling module -->
+          <div id="level-ui" aria-live="polite">
+            <span id="level-num">1</span>
+            <div id="level-bar">
+            <div id="level-bar-fill"></div>
+            <span id="level-bar-text" aria-hidden="true">Level up!</span>
+          </div>
+          </div>
+          <div id="chicken-swarm-milestone-hud" class="chicken-swarm-milestone-hud" hidden="" aria-live="polite"></div>
+        </div>
+        <!-- Pause modal -->
+        <!-- Pause overlay now created by EspadaGameLibrary createPause() -->
+        <div id="hit-counter-ui" aria-live="polite">
+          <span id="hit-counter-num">0</span>
+          <span class="hit-counter-label">Hits</span>
+        </div>
+        <div id="player-health-ui" aria-live="polite">
+          <div id="player-rage-bar">
+            <div id="player-rage-segments"></div>
+            <div class="player-bar-label" id="player-rage-bar-label">
+              <img id="player-rage-bar-icon" src="" alt="" aria-hidden="true">
+              <span id="player-rage-bar-text">0%</span>
+            </div>
+          </div>
+          <div id="player-health-bar">
+            <div id="player-health-bar-fill"></div>
+            <div id="player-health-bar-damage"></div>
+            <div class="player-bar-label" id="player-health-bar-label">
+              <img id="player-health-bar-icon" src="" alt="" aria-hidden="true">
+              <span id="player-health-bar-text">100 / 100</span>
+            </div>
+          </div>
+        </div>
+        <div id="level-up-overlay" aria-hidden="true">
+          <div id="level-up-backdrop"></div>
+          <h2 id="level-up-headline">Level Up</h2>
+          <div id="level-up-content">
+            <div id="level-up-rarity-wrap">
+              <div id="level-up-rarity-carousel" aria-live="polite"></div>
+              <span id="level-up-rarity-final"></span>
+              <span id="level-up-choose-text">Choose a weapon</span>
+            </div>
+            <div id="level-up-cards"></div>
+            <div class="level-up-buttons-row" id="level-up-buttons-row">
+              <button type="button" id="level-up-take-all-btn" class="level-up-take-all-btn btn-9slice btn-9slice--mian-pink" hidden="">
+                <img class="level-up-take-all-icon" src="" alt="" id="level-up-take-all-icon">
+                <span class="level-up-take-all-label">TAKE ALL</span>
+              </button>
+              <button type="button" id="level-up-reroll-btn" class="level-up-reroll-btn btn-9slice btn-9slice--blue">
+                <img class="level-up-reroll-icon" src="" alt="" id="level-up-reroll-icon">
+                <span class="level-up-reroll-label">Re-roll</span>
+                <span class="level-up-reroll-counter" id="level-up-reroll-counter"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="level-up-ad-blocker" class="level-up-ad-blocker" aria-hidden="true"></div>
+        <div id="starting-weapons-overlay" aria-hidden="true">
+          <div class="starting-weapons-backdrop"></div>
+          <div class="starting-weapons-content">
+            <h2 id="starting-weapons-headline">Your starting weapons</h2>
+            <div id="starting-weapons-cards"></div>
+            <div class="starting-weapons-continue-wrap tap-to-continue-anchor">
+              <button type="button" class="tap-to-continue" id="starting-weapons-continue" aria-label="Tap to continue">TAP TO CONTINUE</button>
+            </div>
+          </div>
+        </div>
+        <!-- EXPERIMENTAL: New starting weapons picker layout -->
+        <div id="starting-weapons-picker" aria-hidden="true">
+          <div class="swp-backdrop"></div>
+          <div class="swp-content">
+            <h2 class="swp-headline">Your Starting Weapons</h2>
+            <div class="swp-icons"></div>
+            <div class="swp-detail-card">
+              <div class="swp-detail-icon-wrap">
+                <img class="swp-detail-icon" src="" alt="">
+              </div>
+              <div class="swp-detail-info">
+                <div class="swp-detail-name"></div>
+                <div class="swp-detail-desc"></div>
+              </div>
+            </div>
+            <button type="button" class="swp-continue">Continue</button>
+          </div>
+        </div>
+        <div id="run-end-overlay" aria-hidden="true">
+          <div id="run-end-backdrop"></div>
+          <div id="run-end-content">
+            <div class="run-end-title-wrap">
+              <img id="run-end-title-img" src="" alt="">
+              <span class="run-end-title-text" id="run-end-title-text" aria-hidden="true"></span>
+            </div>
+            <div class="run-end-separator">
+              <img id="run-end-separator-left" src="" alt="">
+              <span class="run-end-separator-text">REWARDS</span>
+              <img id="run-end-separator-right" src="" alt="">
+            </div>
+            <div id="run-end-rewards"></div>
+          </div>
+          <div class="tap-to-continue-anchor run-end-bottom-anchor">
+            <div class="run-end-revive-wrap" id="run-end-revive-wrap" hidden="">
+              <button type="button" class="run-end-revive" id="run-end-revive-btn" aria-label="Revive">
+                <img id="run-end-revive-icon" src="" alt="">
+                <span>REVIVE</span>
+              </button>
+            </div>
+            <button type="button" class="tap-to-continue run-end-touch-continue" id="run-end-touch-continue" aria-label="Tap to continue">TAP TO CONTINUE</button>
+          </div>
+          <div id="run-end-ad-blocker" class="level-up-ad-blocker" aria-hidden="true"></div>
+        </div>
+        <!-- Screen transition is now self-contained in EspadaGameLibrary -->
+        </div>
+      </div>
+    </div>
+  </div>
+    <div id="overlays-root">
+    <div id="achievements-overlay" aria-hidden="true">
+      <div class="achievements-overlay-backdrop" id="achievements-overlay-backdrop" aria-hidden="true"></div>
+      <div class="achievements-overlay-panel">
+        <div class="ach-close-wrap">
+          <button type="button" class="ach-close" id="achievements-close" aria-label="Close"><img class="modal-close-icon" alt=""></button>
+        </div>
+        <div class="ach-tabs-row">
+          <button type="button" class="ach-tab ach-tab--active" data-ach-tab="daily" aria-selected="true"><span class="ach-tab-text">DAILY<img class="ach-tab-alert" alt="" aria-hidden="true" hidden=""></span></button>
+          <button type="button" class="ach-tab" data-ach-tab="weekly" aria-selected="false"><span class="ach-tab-text">WEEKLY<img class="ach-tab-alert" alt="" aria-hidden="true" hidden=""></span></button>
+          <button type="button" class="ach-tab" data-ach-tab="achievements" aria-selected="false"><span class="ach-tab-text">ACHIEVEMENTS<img class="ach-tab-alert" alt="" aria-hidden="true" hidden=""></span></button>
+        </div>
+        <div id="achievements-daily-pane" class="ach-pane ach-pane--active">
+          <div class="ach-scroll" id="achievements-daily-scroll"></div>
+          <div class="ach-claim-all-wrap" id="achievements-daily-claim-all-wrap" hidden="">
+            <button type="button" class="ach-tier-claim shop-btn shop-btn--green" id="achievements-daily-claim-all-btn">CLAIM ALL</button>
+          </div>
+        </div>
+        <div id="achievements-weekly-pane" class="ach-pane">
+          <div class="ach-scroll" id="achievements-weekly-scroll"></div>
+          <div class="ach-claim-all-wrap" id="achievements-weekly-claim-all-wrap" hidden="">
+            <button type="button" class="ach-tier-claim shop-btn shop-btn--green" id="achievements-weekly-claim-all-btn">CLAIM ALL</button>
+          </div>
+        </div>
+        <div id="achievements-ach-pane" class="ach-pane">
+          <div class="ach-scroll" id="achievements-list"></div>
+          <div class="ach-claim-all-wrap" id="achievements-claim-all-wrap" hidden="">
+            <button type="button" class="ach-tier-claim shop-btn shop-btn--green" id="achievements-claim-all-btn">CLAIM ALL</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="gear-merge-reveal-modal" class="gear-merge-reveal-modal" role="dialog" aria-modal="true" aria-label="Merge result" hidden="">
+      <div class="gear-merge-reveal-backdrop" id="gear-merge-reveal-backdrop"></div>
+      <div class="gear-merge-reveal-flash" id="gear-merge-reveal-flash" aria-hidden="true"></div>
+      <div class="gear-merge-reveal-stage" id="gear-merge-reveal-stage">
+        <div class="gear-merge-reveal-icons" id="gear-merge-reveal-icons">
+          <div class="gear-merge-reveal-icon-wrap gear-merge-reveal-icon-wrap--side" id="gear-merge-reveal-icon-left" data-pos="left"><img src="" alt=""></div>
+          <div class="gear-merge-reveal-icon-wrap gear-merge-reveal-icon-wrap--center" id="gear-merge-reveal-icon-center" data-pos="center"><img src="" alt=""></div>
+          <div class="gear-merge-reveal-icon-wrap gear-merge-reveal-icon-wrap--side" id="gear-merge-reveal-icon-right" data-pos="right"><img src="" alt=""></div>
+        </div>
+        <div class="gear-merge-reveal-result" id="gear-merge-reveal-result">
+          <div class="gear-merge-reveal-result-content">
+            <div class="gear-merge-reveal-result-name" id="gear-merge-reveal-result-name"></div>
+            <div class="gear-merge-reveal-result-icon" id="gear-merge-reveal-result-icon-wrap">
+              <img id="gear-merge-reveal-result-icon" src="" alt="">
+            </div>
+            <div class="gear-item-modal-body gear-merge-reveal-tooltip-body">
+              <div class="gear-item-modal-details-row" id="gear-merge-reveal-description-row">
+                <div class="gear-item-modal-details-col" style="flex: 1; min-width: 0;">
+                  <div id="gear-merge-reveal-description" class="gear-item-modal-description"></div>
+                </div>
+              </div>
+              <section class="gear-item-modal-skills">
+                <div class="gear-item-modal-skills-title">Stats &amp; Ability</div>
+                <ul id="gear-merge-reveal-skills-list" class="gear-item-modal-skills-list" aria-label="Item stats and ability"></ul>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="gear-merge-reveal-actions" class="gear-merge-reveal-actions">
+        <button type="button" class="tap-to-continue gear-merge-reveal-touch-continue" id="gear-merge-reveal-touch-continue" aria-label="Tap to continue">TAP TO CONTINUE</button>
+      </div>
+    </div>
+    <div id="merge-modal" class="merge-modal" role="dialog" aria-modal="true" aria-label="Merge results" hidden="">
+      <div class="merge-modal-backdrop" id="merge-modal-backdrop"></div>
+      <div class="merge-modal-stage">
+        <div id="merge-modal-status" class="merge-modal-status">MERGING..</div>
+        <div id="merge-modal-grid" class="merge-modal-grid" aria-label="Merged items"></div>
+        <div id="merge-modal-done-wrap" class="merge-modal-done-wrap merge-modal-done-wrap--hidden">
+          <button type="button" id="merge-modal-close" class="merge-modal-close btn-9slice btn-9slice--green">Done</button>
+        </div>
+      </div>
+    </div>
+    <div id="chest-open-modal" class="chest-open-modal" role="dialog" aria-modal="true" aria-label="Chest reward" hidden="">
+      <div class="chest-open-backdrop" id="chest-open-backdrop"></div>
+      <div class="chest-open-stage">
+        <div class="chest-open-flash chest-open-flash--hidden" id="chest-open-flash" aria-hidden="true"></div>
+        <div class="chest-open-item-reveal" id="chest-open-item-reveal" aria-hidden="true">
+          <div id="chest-open-item-name" class="chest-open-item-name"></div>
+          <div class="chest-open-item-icon-wrap" id="chest-open-item-icon-wrap">
+            <img id="chest-open-item-icon" class="chest-open-item-icon" src="" alt="">
+          </div>
+          <div id="chest-open-item-rarity" class="chest-open-item-rarity"></div>
+        </div>
+        <div class="chest-open-batch" id="chest-open-batch" hidden="" aria-hidden="true">
+          <div class="chest-open-batch-scroll" id="chest-open-batch-scroll">
+            <div class="chest-open-batch-grid" id="chest-open-batch-grid"></div>
+          </div>
+        </div>
+        <div class="chest-open-chest-container" id="chest-open-chest-container">
+          <div class="chest-open-chest-wrap" id="chest-open-chest-wrap">
+            <img id="chest-open-chest-img" class="chest-open-chest-img" src="" alt="">
+          </div>
+        </div>
+      </div>
+      <div id="chest-open-actions" class="chest-open-actions chest-open-actions--hidden">
+        <div class="chest-open-actions-inner">
+          <button type="button" class="chest-open-buy-more" id="chest-open-buy-more">
+            <span class="chest-open-buy-more-label">OPEN 1 MORE</span>
+            <span class="chest-open-buy-more-cost">
+              <img class="chest-open-gem" id="chest-open-buy-more-gem" src="" alt=""><span id="chest-open-buy-more-price"></span>
+            </span>
+          </button>
+          <button type="button" class="tap-to-continue chest-open-tap-to-close" id="chest-open-tap-to-close" aria-label="Tap to continue">TAP TO CONTINUE</button>
+        </div>
+      </div>
+    </div>
+    <div id="menu-level-up-overlay" class="menu-level-up-modal" aria-hidden="true">
+      <div class="menu-level-up-backdrop"></div>
+      <div class="menu-level-up-content">
+        <h2 class="menu-level-up-title" id="menu-level-up-title">You reached the next level!</h2>
+        <div class="menu-level-up-header-image-wrap" id="menu-level-up-header-image-wrap">
+          <img class="menu-level-up-header-image" id="menu-level-up-header-image" src="" alt="">
+          <span class="menu-level-up-emblem-label">LEVEL</span>
+          <span class="menu-level-up-level-num" id="menu-level-up-level-num">1</span>
+        </div>
+        <div class="menu-level-up-unlocks-list" id="menu-level-up-unlocks-list" aria-hidden="true"></div>
+        <div class="menu-level-up-rewards-block" id="menu-level-up-rewards-block">
+          <div class="menu-level-up-rewards-separator run-end-separator" id="menu-level-up-rewards-separator">
+            <img id="menu-level-up-separator-left" src="" alt="">
+            <span class="run-end-separator-text">REWARDS</span>
+            <img id="menu-level-up-separator-right" src="" alt="">
+          </div>
+          <div class="menu-level-up-rewards-section">
+            <div class="menu-level-up-rewards run-end-rewards-style" id="menu-level-up-rewards-container"></div>
+          </div>
+        </div>
+      </div>
+      <div class="menu-level-up-tap-wrap tap-to-continue-anchor">
+        <button type="button" class="tap-to-continue" id="menu-level-up-tap-continue" aria-label="Tap to continue">TAP TO CONTINUE</button>
+      </div>
+    </div>
+    <div id="chest-drop-rates-modal" class="chest-drop-rates-modal" role="dialog" aria-modal="true" aria-label="Chest drop rates" hidden="">
+      <div class="chest-drop-rates-modal-backdrop" id="chest-drop-rates-modal-backdrop"></div>
+      <div class="chest-drop-rates-modal-content">
+        <div class="chest-drop-rates-modal-header">
+          <h2 class="chest-drop-rates-modal-title" id="chest-drop-rates-modal-title"></h2>
+          <button type="button" class="chest-drop-rates-modal-close" id="chest-drop-rates-modal-close" aria-label="Close"><img class="modal-close-icon" alt=""></button>
+        </div>
+        <div class="chest-drop-rates-modal-body" id="chest-drop-rates-modal-body"></div>
+        <p class="chest-drop-rates-modal-disclaimer">When a rarity is rolled, each item in that rarity has an equal chance.</p>
+      </div>
+    </div>
+    <div id="talents-migration-modal" class="talents-migration-modal" role="dialog" aria-modal="true" aria-label="Announcement" hidden="">
+      <div class="talents-migration-modal-backdrop"></div>
+      <div class="talents-migration-modal-content">
+        <header class="talents-migration-modal-header">
+          <h2 class="talents-migration-modal-title">ANNOUNCEMENT</h2>
+        </header>
+        <div class="talents-migration-modal-body">
+          <p>Your talent tree progress has been replaced by a new upgrade deck. Claim your coin refund and bonus keys to continue.</p>
+        </div>
+        <div class="talents-migration-rewards">
+          <div class="talents-migration-reward-item" data-migration-fly-source="coins">
+            <div class="daily-login-card-icon-wrap daily-login-card-icon-wrap--coins">
+              <img class="daily-login-card-icon" src="" alt="" data-migration-coin-icon="">
+            </div>
+            <div class="daily-login-card-amount" data-migration-refund-amount="">0</div>
+          </div>
+          <div class="talents-migration-reward-item" data-migration-fly-source="keys">
+            <div class="daily-login-card-icon-wrap daily-login-card-icon-wrap--purple">
+              <img class="daily-login-card-icon" src="" alt="" data-migration-key-icon="">
+            </div>
+            <div class="daily-login-card-amount" data-migration-key-amount="">3</div>
+          </div>
+        </div>
+        <div class="talents-migration-claim-wrap shop-card-price-wrap">
+          <button type="button" id="talents-migration-claim" class="shop-card-price btn-9slice btn-9slice--mian-blue">Claim</button>
+        </div>
+      </div>
+    </div>
+    <div id="daily-login-modal" class="daily-login-modal" role="dialog" aria-modal="true" aria-label="Daily Login Bonus" hidden="">
+      <div class="daily-login-modal-backdrop"></div>
+      <div class="daily-login-modal-content">
+        <button type="button" id="daily-login-modal-close" class="daily-login-modal-close" aria-label="Close"><img class="modal-close-icon" alt=""></button>
+        <header class="daily-login-modal-header">
+          <h2 class="daily-login-modal-title">Daily Login Bonus</h2>
+          <p class="daily-login-countdown" id="daily-login-countdown" aria-live="polite">Next Reward : 0h 0m</p>
+        </header>
+        <div class="daily-login-cards-wrap">
+          <div class="daily-login-cards" id="daily-login-cards"></div>
+          <div class="daily-login-card daily-login-card--day7" id="daily-login-day7"></div>
+        </div>
+      </div>
+    </div>
+    <div id="event-promo-modal" class="event-promo-modal" role="dialog" aria-modal="true" aria-labelledby="event-promo-modal-title" aria-label="Event available" hidden="">
+      <div class="event-promo-modal-backdrop"></div>
+      <div class="event-promo-modal-content">
+        <header class="event-promo-modal-header">
+          <h2 id="event-promo-modal-title" class="event-promo-modal-title">Event available</h2>
+          <button type="button" id="event-promo-modal-close" class="event-promo-modal-close" aria-label="Close"><img class="modal-close-icon" alt=""></button>
+        </header>
+        <div id="event-promo-modal-card-slot" class="event-promo-modal-card-slot"></div>
+      </div>
+    </div>
+    <div id="gear-item-modal" class="gear-item-modal" role="dialog" aria-modal="true" aria-labelledby="gear-item-modal-title" hidden="">
+      <div class="gear-item-modal-backdrop"></div>
+      <div class="gear-item-modal-content">
+        <button type="button" id="gear-item-modal-close" class="gear-item-modal-close" aria-label="Close"><img class="modal-close-icon" alt=""></button>
+        <header class="gear-item-modal-header">
+          <h2 id="gear-item-modal-title" class="gear-item-modal-title"></h2>
+          <div id="gear-item-modal-rarity" class="gear-item-modal-rarity-badge"></div>
+        </header>
+        <div class="gear-item-modal-body">
+          <div class="gear-item-modal-details-row">
+            <div class="gear-item-modal-image-wrap">
+              <img id="gear-item-modal-image" class="gear-item-modal-image" src="" alt="">
+            </div>
+            <div class="gear-item-modal-details-col">
+              <div id="gear-item-modal-slot" class="gear-item-modal-slot-bar"></div>
+              <div id="gear-item-modal-description" class="gear-item-modal-description"></div>
+            </div>
+          </div>
+          <section class="gear-item-modal-skills">
+            <div class="gear-item-modal-skills-title">Stats &amp; Ability</div>
+            <ul id="gear-item-modal-skills-list" class="gear-item-modal-skills-list" aria-label="Item stats and ability"></ul>
+          </section>
+        </div>
+        <div class="gear-item-modal-actions">
+          <button type="button" class="gear-item-modal-equip btn-9slice btn-9slice--mian-green" id="gear-item-modal-equip">EQUIP</button>
+          <button type="button" class="gear-item-modal-unequip btn-9slice btn-9slice--mian-red" id="gear-item-modal-unequip" hidden="">UNEQUIP</button>
+          <button type="button" class="gear-item-modal-merge btn-9slice btn-9slice--green" id="gear-item-modal-merge" hidden="">MERGE</button>
+        </div>
+      </div>
+    </div>
+    <div id="fly-feedback-overlay" class="fly-feedback-overlay" aria-hidden="true"></div>
+    </div>
+    <script>
+      // Mock WebGL context to allow PixiJS to initialize in headless environments
+      (function() {
+        const originalGetContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function(contextType, options) {
+          if (contextType === 'webgl' || contextType === 'experimental-webgl' || contextType === 'webgl2') {
+            // Try to get real WebGL context first
+            const gl = originalGetContext.call(this, contextType, options);
+            if (gl) return gl;
+            
+            // Return a minimal mock if real WebGL is not available
+            console.warn('[MockWebGL] Creating minimal WebGL mock for headless environment');
+            return {
+              getContextAttributes: function() { return { stencil: true, antialias: false }; },
+              getExtension: function() { return null; },
+              getParameter: function(p) { 
+                // MAX_TEXTURE_IMAGE_UNITS = 34921
+                if (p === 34921) return 8;
+                // MAX_VERTEX_TEXTURE_IMAGE_UNITS = 35660
+                if (p === 35660) return 4;
+                // MAX_TEXTURE_SIZE = 3379
+                if (p === 3379) return 4096;
+                // MAX_CUBE_MAP_TEXTURE_SIZE = 34076
+                if (p === 34076) return 4096;
+                // MAX_RENDERBUFFER_SIZE = 34024
+                if (p === 34024) return 4096;
+                // MAX_VIEWPORT_DIMS - return as Float32Array
+                if (p === 3386) return new Float32Array([4096, 4096]);
+                // MAX_VERTEX_ATTRIBS = 34921
+                if (p === 34921) return 16;
+                // MAX_VERTEX_UNIFORM_VECTORS = 36347
+                if (p === 36347) return 256;
+                // MAX_FRAGMENT_UNIFORM_VECTORS = 36349
+                if (p === 36349) return 256;
+                // MAX_VARYING_VECTORS = 36348
+                if (p === 36348) return 15;
+                // MAX_COMBINED_TEXTURE_IMAGE_UNITS = 35661
+                if (p === 35661) return 8;
+                // MAX_DRAW_BUFFERS (WebGL2) = 34852
+                if (p === 34852) return 1;
+                // VERSION
+                if (p === 7938) return "WebGL 1.0 (Mock)";
+                // VENDOR
+                if (p === 7936) return "Mock Vendor";
+                // RENDERER
+                if (p === 7937) return "Mock Renderer";
+                // SHADING_LANGUAGE_VERSION
+                if (p === 35724) return "WebGL GLSL ES 1.0 (Mock)";
+                // UNPACK_ALIGNMENT
+                if (p === 3317) return 4;
+                // PACK_ALIGNMENT
+                if (p === 3333) return 4;
+                // COLOR_WRITEMASK - return as array
+                if (p === 3107) return [true, true, true, true];
+                // RED_BITS
+                if (p === 3410) return 8;
+                // GREEN_BITS
+                if (p === 3411) return 8;
+                // BLUE_BITS
+                if (p === 3412) return 8;
+                // ALPHA_BITS
+                if (p === 3413) return 8;
+                // DEPTH_BITS
+                if (p === 3414) return 24;
+                // STENCIL_BITS
+                if (p === 3415) return 8;
+                // SAMPLE_BUFFERS
+                if (p === 32936) return 1;
+                // SAMPLES
+                if (p === 32937) return 4;
+                // SUBPIXEL_BITS
+                if (p === 3408) return 4;
+                // ALIASED_POINT_SIZE_RANGE
+                if (p === 33901) return new Float32Array([1, 100]);
+                // ALIASED_LINE_WIDTH_RANGE
+                if (p === 33902) return new Float32Array([1, 1]);
+                // MAX_ELEMENTS_VERTICES
+                if (p === 33000) return 1000000;
+                // MAX_ELEMENTS_INDICES
+                if (p === 33001) return 1000000;
+                // COMPRESSED_TEXTURE_FORMATS - return as empty Uint32Array
+                if (p === 34467) return new Uint32Array(0);
+                // SHADER_PRECISION_FORMAT
+                if (p === 36338 || p === 36339 || p === 36340 || p === 36341) {
+                  return { precision: 23, rangeMin: 127, rangeMax: 127 };
+                }
+                return 0; 
+              },
+              createShader: function() { return {}; },
+              shaderSource: function() {},
+              compileShader: function() {},
+              getShaderParameter: function() { return true; },
+              deleteShader: function() {},
+              createProgram: function() { return {}; },
+              attachShader: function() {},
+              linkProgram: function() {},
+              getProgramParameter: function() { return true; },
+              useProgram: function() {},
+              createBuffer: function() { return {}; },
+              bindBuffer: function() {},
+              bufferData: function() {},
+              bufferSubData: function() {},
+              getBufferSubData: function() {},
+              copyBufferSubData: function() {},
+              createTexture: function() { return {}; },
+              bindTexture: function() {},
+              texImage2D: function() {},
+              texParameteri: function() {},
+              viewport: function() {},
+              clear: function() {},
+              clearColor: function() {},
+              enable: function() {},
+              disable: function() {},
+              blendFunc: function() {},
+              blendFuncSeparate: function() {},
+              blendEquation: function() {},
+              blendEquationSeparate: function() {},
+              blendColor: function() {},
+              stencilFunc: function() {},
+              stencilFuncSeparate: function() {},
+              stencilOp: function() {},
+              stencilOpSeparate: function() {},
+              stencilMask: function() {},
+              colorMask: function() {},
+              depthRange: function() {},
+              polygonOffset: function() {},
+              sampleCoverage: function() {},
+              isContextLost: function() { return false; },
+              getSupportedExtensions: function() { return []; },
+              getShaderPrecisionFormat: function() { return { precision: 23, rangeMin: 127, rangeMax: 127 }; },
+              createQuery: function() { return {}; },
+              deleteQuery: function() {},
+              beginQuery: function() {},
+              endQuery: function() {},
+              getQuery: function() {},
+              getQueryParameter: function() { return 0; },
+              createVertexArray: function() { return {}; },
+              deleteVertexArray: function() {},
+              bindVertexArray: function() {},
+              transformFeedbackVaryings: function() {},
+              beginTransformFeedback: function() {},
+              endTransformFeedback: function() {},
+              pauseTransformFeedback: function() {},
+              resumeTransformFeedback: function() {},
+              createSampler: function() { return {}; },
+              deleteSampler: function() {},
+              bindSampler: function() {},
+              samplerParameteri: function() {},
+              samplerParameterf: function() {},
+              fenceSync: function() { return {}; },
+              deleteSync: function() {},
+              clientWaitSync: function() { return 0; },
+              waitSync: function() {},
+              createRenderbuffer: function() { return {}; },
+              bindRenderbuffer: function() {},
+              renderbufferStorage: function() {},
+              createFramebuffer: function() { return {}; },
+              bindFramebuffer: function() {},
+              framebufferTexture2D: function() {},
+              framebufferRenderbuffer: function() {},
+              checkFramebufferStatus: function() { return 36053; },
+              drawArrays: function() {},
+              drawElements: function() {},
+              uniform1i: function() {},
+              uniform1f: function() {},
+              uniform2f: function() {},
+              uniform3f: function() {},
+              uniform4f: function() {},
+              uniformMatrix4fv: function() {},
+              activeTexture: function() {},
+              enableVertexAttribArray: function() {},
+              vertexAttribPointer: function() {},
+              bindAttribLocation: function() {},
+              getAttribLocation: function() { return 0; },
+              getActiveAttrib: function() { return { name: 'aPosition', size: 2, type: 5126 }; },
+              getActiveUniform: function() { return { name: 'uMatrix', size: 1, type: 5126 }; },
+              getUniformLocation: function() { return {}; },
+              clearDepth: function() {},
+              depthFunc: function() {},
+              depthMask: function() {},
+              cullFace: function() {},
+              frontFace: function() {},
+              pixelStorei: function() {},
+              scissor: function() {},
+              LINEAR: 9729,
+              REPEAT: 10497,
+              CLAMP_TO_EDGE: 33071,
+              TEXTURE_2D: 3553,
+              TEXTURE_WRAP_S: 10242,
+              TEXTURE_WRAP_T: 10243,
+              TEXTURE_MIN_FILTER: 10241,
+              TEXTURE_MAG_FILTER: 10240,
+              COLOR_BUFFER_BIT: 16384,
+              DEPTH_BUFFER_BIT: 256,
+              STENCIL_BUFFER_BIT: 1024,
+              TRIANGLES: 4,
+              TRIANGLE_STRIP: 5,
+              TRIANGLE_FAN: 6,
+              ARRAY_BUFFER: 34962,
+              ELEMENT_ARRAY_BUFFER: 34963,
+              STATIC_DRAW: 35044,
+              DYNAMIC_DRAW: 35048,
+              STREAM_DRAW: 35040,
+              FRAMEBUFFER: 36160,
+              RENDERBUFFER: 36161,
+              DEPTH_ATTACHMENT: 36096,
+              STENCIL_ATTACHMENT: 36128,
+              DEPTH_STENCIL_ATTACHMENT: 33306,
+              COLOR_ATTACHMENT0: 36064,
+              FRAMEBUFFER_COMPLETE: 36053,
+              UNSIGNED_BYTE: 5121,
+              UNSIGNED_SHORT: 5123,
+              UNSIGNED_INT: 5125,
+              FLOAT: 5126,
+              BYTE: 5120,
+              SHORT: 5122,
+              INT: 5124,
+              DEPTH_COMPONENT: 6402,
+              DEPTH_STENCIL: 34041,
+              RGBA: 6408,
+              RGB: 6407,
+              ALPHA: 6406,
+              LUMINANCE: 6409,
+              LUMINANCE_ALPHA: 6410,
+              SRC_ALPHA: 770,
+              ONE_MINUS_SRC_ALPHA: 771,
+              ONE: 1,
+              ZERO: 0,
+              BLEND: 3042,
+              DEPTH_TEST: 2929,
+              CULL_FACE: 2884,
+              SCISSOR_TEST: 3089,
+              LESS: 513,
+              LEQUAL: 515,
+              GEQUAL: 518,
+              GREATER: 516,
+              EQUAL: 514,
+              NOTEQUAL: 517,
+              ALWAYS: 519,
+              NEVER: 512,
+              FRONT: 1028,
+              BACK: 1029,
+              FRONT_AND_BACK: 1032,
+              CW: 2304,
+              CCW: 2305,
+              NO_ERROR: 0,
+              INVALID_ENUM: 1280,
+              INVALID_VALUE: 1281,
+              INVALID_OPERATION: 1282,
+              OUT_OF_MEMORY: 1285,
+              CONTEXT_LOST_WEBGL: 37442
+            };
+          }
+          return originalGetContext.call(this, contextType, options);
+        };
+      })();
+      
+      // 捕获详细错误信息
+      window.addEventListener('error', function(e) {
+        console.error('Error captured:', e.message, 'at', e.filename, 'line', e.lineno);
+        console.error('Stack:', e.error && e.error.stack);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('Unhandled rejection:', e.reason);
+      });
+      setTimeout(function(){
+        var ls=document.getElementById('loading-screen');
+        if(ls)ls.style.setProperty('display','none','important');
+      },3000);
+    </script>
+</body></html>

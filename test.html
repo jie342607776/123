@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head><title>Asset Test</title></head>
+<body>
+<h1>Testing Assets</h1>
+<img src="assets/S_Wpn_Sword-DjzEgdGz.png" alt="Sword" style="width:100px;height:100px;">
+<img src="assets/arch_slime_event_bg-BfO_STCl.png" alt="Slime BG" style="width:100px;height:100px;">
+<img src="assets/S_Enemy_Minotaur-D8BsOu7m.png" alt="Minotaur" style="width:100px;height:100px;">
+<script>
+console.log('Testing fetch...');
+fetch('assets/S_Wpn_Sword-DjzEgdGz.png')
+  .then(r => console.log('Sword:', r.status))
+  .catch(e => console.error('Sword error:', e));
+fetch('assets/arch_slime_event_bg-BfO_STCl.png')
+  .then(r => console.log('Slime BG:', r.status))
+  .catch(e => console.error('Slime BG error:', e));
+</script>
+</body>
+</html>

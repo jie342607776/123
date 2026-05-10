@@ -1,0 +1,1 @@
+import{S as r}from"./index-COYBzf31.js";function s(t){return new Promise(e=>setTimeout(e,t))}async function o(t,e){const c=t._statusState;return!c||t.destroyed||!c.cc?!1:(c.cc.turnsLeft-=1,c.cc.turnsLeft<=0&&(c.cc=null),await s(r),t.destroyed)}export{o as tickCC};
